@@ -1,0 +1,812 @@
+{
+  "name": "NexusDocs - Auto Documentacion",
+  "nodes": [
+    {
+      "parameters": {
+        "operation": "get",
+        "issueKey": "={{ $('Webhook').item.json.body.key }}",
+        "additionalFields": {
+          "fields": "summary,description,comment,parent,subtasks,status"
+        }
+      },
+      "type": "n8n-nodes-base.jira",
+      "typeVersion": 1,
+      "position": [
+        560,
+        -160
+      ],
+      "id": "29c53e4b-00fa-4475-b3f0-f0b522050db6",
+      "name": "Get HU Details",
+      "credentials": {
+        "jiraSoftwareCloudApi": {
+          "id": "ZJp5cSMMOq7X9seF",
+          "name": "Jira SW Cloud account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "get",
+        "issueKey": "={{ $('Get HU Details').item.json.fields.parent.key }}",
+        "additionalFields": {
+          "fields": "summary,description"
+        }
+      },
+      "type": "n8n-nodes-base.jira",
+      "typeVersion": 1,
+      "position": [
+        832,
+        -160
+      ],
+      "id": "e0d38286-7a5f-40a5-89a0-1d2b8130895a",
+      "name": "Get Parent Epic",
+      "credentials": {
+        "jiraSoftwareCloudApi": {
+          "id": "ZJp5cSMMOq7X9seF",
+          "name": "Jira SW Cloud account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "getAll",
+        "returnAll": true,
+        "options": {
+          "fields": "summary,description,comment,status,assignee",
+          "jql": "=parent = {{ $('Get HU Details').item.json.key }} ORDER BY created ASC"
+        }
+      },
+      "type": "n8n-nodes-base.jira",
+      "typeVersion": 1,
+      "position": [
+        1280,
+        -160
+      ],
+      "id": "84f3a059-ffae-44d1-8f0c-efbfc0daf39c",
+      "name": "Get Subtasks",
+      "credentials": {
+        "jiraSoftwareCloudApi": {
+          "id": "ZJp5cSMMOq7X9seF",
+          "name": "Jira SW Cloud account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "url": "=https://celinalopezutn.atlassian.net/rest/api/3/issue/{{ $('Get HU Details').item.json.key }}/comment",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBasicAuth",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        1056,
+        -160
+      ],
+      "id": "2b25fe81-0d48-41bb-897f-a815e0aaa6cc",
+      "name": "Get HU Comments",
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "sZUb5BfJEq1nrRh7",
+          "name": "Atlassian API Token"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "url": "=https://celinalopezutn.atlassian.net/rest/api/3/issue/{{ $json.key }}/comment",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBasicAuth",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        1920,
+        -80
+      ],
+      "id": "e347ed8c-bb6c-4ef1-8b81-e2c25e8009cc",
+      "name": "Get Subtask Comments",
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "sZUb5BfJEq1nrRh7",
+          "name": "Atlassian API Token"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "url": "https://celinalopezutn.atlassian.net/rest/dev-status/latest/issue/detail",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBasicAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "issueId",
+              "value": "={{ $('Get HU Details').item.json.id }}"
+            },
+            {
+              "name": "applicationType",
+              "value": "bitbucket"
+            },
+            {
+              "name": "dataType",
+              "value": "pullrequest"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        2320,
+        -176
+      ],
+      "id": "c6a4c524-1c68-4d6f-8c05-2c374e937a72",
+      "name": "Get Linked PRs",
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "sZUb5BfJEq1nrRh7",
+          "name": "Atlassian API Token"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const devInfo = $(\"Get Linked PRs\").first().json;\nconst details = devInfo.detail || [];\n\n// Recopilar todos los PRs mergeados\nconst mergedPRs = [];\nfor (const d of details) {\n  const prs = d.pullRequests || [];\n  for (const pr of prs) {\n    if (pr.status === \"MERGED\") {\n      // Extraer workspace y repo de la URL del PR\n      const decodedUrl = decodeURIComponent(pr.url);\n      const cleanPath = decodedUrl\n        .replace(\"https://bitbucket.org/\", \"\");\n      const parts = cleanPath.split(\"/\");\n      const workspace = parts[0];\n      const repoSlug = parts[1];\n      const prId = parts[3] || pr.id;\n\n      mergedPRs.push({\n        prId,\n        prName: pr.name || \"\",\n        prUrl: decodedUrl,\n        workspace,\n        repoSlug,\n        sourceBranch: pr.source?.branch || \"\",\n        destinationBranch: pr.destination?.branch || \"\",\n        author: pr.author?.name || \"No disponible\",\n        // URLs de la API de Bitbucket\n        diffUrl: `https://api.bitbucket.org/2.0/repositories/${workspace}/${repoSlug}/pullrequests/${prId}/diff`,\n        commitsUrl: `https://api.bitbucket.org/2.0/repositories/${workspace}/${repoSlug}/pullrequests/${prId}/commits`,\n      });\n    }\n  }\n}\n\n// Si no hay PRs mergeados, pasar un flag para saltear\n// la parte de Bitbucket\nreturn [{\n  json: {\n    mergedPRs,\n    hasPRs: mergedPRs.length > 0,\n    prCount: mergedPRs.length\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2512,
+        -176
+      ],
+      "id": "5d79a517-ceac-401f-9c71-63351e1a9fd2",
+      "name": "Extract PR Info"
+    },
+    {
+      "parameters": {
+        "jsCode": "const prs = $(\"Extract PR Info\").first().json.mergedPRs;\n\nreturn prs.map(pr => ({ json: pr }));"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2960,
+        -240
+      ],
+      "id": "93f81805-21b8-440c-a4a5-b31be815a733",
+      "name": "Split PRs"
+    },
+    {
+      "parameters": {
+        "url": "={{ $json.diffUrl }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBasicAuth",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "text"
+            }
+          }
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        3280,
+        -528
+      ],
+      "id": "99031bd0-c499-4e16-8ed5-55a7fe967280",
+      "name": "Get PR Diff1",
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "S9Z7Azlq3RATBhvb",
+          "name": "Generico Bitbucket"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// ==========================================\n// DATOS DE JIRA\n// ==========================================\nconst hu = $(\"Get HU Details\").first().json;\nconst epic = $(\"Get Parent Epic\").first().json;\n\nconst huKey = hu.key;\nconst huSummary = hu.fields.summary;\nconst huDescription = hu.fields.description || \"Sin descripción\";\nconst epicName = epic.fields.summary;\n\n// Función para extraer texto de comentarios (ADF o plano)\nfunction extractText(body) {\n  if (typeof body === \"string\") return body;\n  if (typeof body === \"object\" && body.content) {\n    return body.content\n      .map(block => {\n        if (block.content) {\n          return block.content\n            .map(inline => inline.text || \"\").join(\"\");\n        }\n        return \"\";\n      })\n      .join(\"\\n\");\n  }\n  return \"(vacío)\";\n}\n\n// Comentarios de la HU\nlet huComments = [];\ntry {\n  const data = $(\"Get HU Comments\").first().json;\n  huComments = (data.comments || []).map(c => ({\n    source: `HU ${huKey}`,\n    author: c.author?.displayName || \"Desconocido\",\n    text: extractText(c.body)\n  }));\n} catch(e) {}\n\n// Comentarios de subtareas\nlet subtaskComments = [];\ntry {\n  const stItems = $(\"Get Subtask Comments\").all();\n  for (const item of stItems) {\n    const comments = item.json.comments || [];\n    for (const c of comments) {\n      subtaskComments.push({\n        source: \"Subtarea\",\n        author: c.author?.displayName || \"Desconocido\",\n        text: extractText(c.body)\n      });\n    }\n  }\n} catch(e) {}\n\n// Info de subtareas\nlet subtasksInfo = [];\ntry {\n  const subtasks = $(\"Get Subtasks\").all();\n  subtasksInfo = subtasks.map(st => ({\n    key: st.json.key,\n    summary: st.json.fields?.summary || \"\",\n    status: st.json.fields?.status?.name || \"\",\n    assignee: st.json.fields?.assignee?.displayName \n      || \"Sin asignar\"\n  }));\n} catch(e) {}\n\n// ==========================================\n// DATOS DE BITBUCKET\n// ==========================================\nlet prInfo = [];\ntry {\n  prInfo = $(\"Extract PR Info\").first().json.mergedPRs || [];\n} catch(e) {}\n\n// Diffs de PRs\nlet allDiffs = \"\";\ntry {\n  const diffItems = $(\"Get PR Diff\").all();\n  for (const item of diffItems) {\n    const diffText = typeof item.json === \"string\" \n      ? item.json \n      : (item.json.data || JSON.stringify(item.json));\n    allDiffs += diffText + \"\\n\\n\";\n  }\n} catch(e) {}\n\n// Truncar diffs si son muy largos\nconst MAX_DIFF = 12000;\nif (allDiffs.length > MAX_DIFF) {\n  allDiffs = allDiffs.substring(0, MAX_DIFF) \n    + \"\\n\\n... [DIFF TRUNCADO] ...\";\n}\n\n// Commits de PRs\nlet allCommits = [];\ntry {\n  const commitItems = $(\"Get PR Commits 2\").all();\n  for (const item of commitItems) {\n    const values = item.json.values || [];\n    for (const c of values) {\n      allCommits.push({\n        hash: c.hash?.substring(0, 8),\n        message: c.message,\n        author: c.author?.raw \n          || c.author?.user?.display_name || \"\"\n      });\n    }\n  }\n} catch(e) {}\n\n// ==========================================\n// ARMAR PROMPT UNIFICADO\n// ==========================================\nconst commentsSummary = [\n  ...huComments.map(c => \n    `[${c.source}] ${c.author}: ${c.text}`),\n  ...subtaskComments.map(c => \n    `[${c.source}] ${c.author}: ${c.text}`)\n].join(\"\\n\");\n\nconst subtasksSummary = subtasksInfo\n  .map(st => \n    `- ${st.key}: ${st.summary} (${st.status}, ${st.assignee})`)\n  .join(\"\\n\");\n\nconst prSummary = prInfo.map(pr => \n  `- PR #${pr.prId}: ${pr.prName} | ${pr.workspace}/${pr.repoSlug} | ${pr.sourceBranch} → ${pr.destinationBranch} | Autor: ${pr.author}`\n).join(\"\\n\");\n\nconst commitsSummary = allCommits\n  .map(c => `[${c.hash}] ${c.message} (${c.author})`)\n  .join(\"\\n\");\n\nconst agentPrompt = `\nAnalizá toda la información de esta Historia de Usuario\ncompletada y generá documentación técnica UNIFICADA en\nespañol para actualizar la página de Confluence del proyecto.\n\n## HISTORIA DE USUARIO\n- Clave: ${huKey}\n- Resumen: ${huSummary}\n- Descripción: ${huDescription}\n- Epic/Proyecto: ${epicName}\n\n## SUBTAREAS (${subtasksInfo.length})\n${subtasksSummary || \"Sin subtareas\"}\n\n## COMENTARIOS DEL EQUIPO (${huComments.length + subtaskComments.length})\n${commentsSummary || \"Sin comentarios\"}\n\n## PULL REQUESTS MERGEADOS (${prInfo.length})\n${prSummary || \"Sin PRs vinculados (la HU puede no tener código asociado)\"}\n\n## COMMITS (${allCommits.length})\n${commitsSummary || \"Sin commits\"}\n\n## DIFF DEL CÓDIGO\n${allDiffs || \"Sin diff disponible\"}\n\n## INSTRUCCIONES\nGenerá UN SOLO bloque HTML unificado que integre toda la\ninformación anterior. La estructura debe ser:\n\n1. <h2> con la clave y resumen de la HU\n2. Metadata: tabla con estado, fecha, repositorio(s), rama(s)\n3. Descripción funcional: qué se implementó según la HU\n4. Tabla de subtareas (si hay)\n5. Cambios técnicos: archivos modificados, lógica de negocio,\n   validaciones, integraciones (basado en el diff y commits)\n6. Notas del desarrollador: información relevante de los\n   comentarios de devs (avances, aclaraciones técnicas)\n7. Notas de QA: resultados de pruebas, documentos de prueba,\n   bugs encontrados (de los comentarios de QA/testers)\n8. Observaciones: puntos importantes que surjan del análisis\n\nPara clasificar comentarios:\n- Si el autor tiene \"QA\", \"Tester\" o \"Test\" → sección QA\n- El resto → sección Desarrollador\n\nSi no hay PRs/código, omití las secciones técnicas y\nenfocate en la parte funcional y los comentarios.\n\nFormato: HTML válido para Confluence con <h2>, <h3>, <p>,\n<ul><li>, <table>. NO uses markdown.\n`;\n\nreturn [{\n  json: {\n    agentPrompt,\n    epicName,\n    huKey,\n    huSummary\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3744,
+        -160
+      ],
+      "id": "7f2ee28f-3d55-430b-89ee-5f9c88c7ac7d",
+      "name": "Consolidate All Data"
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "value": "gpt-4o-mini",
+          "mode": "list",
+          "cachedResultName": "gpt-4o-mini"
+        },
+        "builtInTools": {},
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.3,
+      "position": [
+        4464,
+        16
+      ],
+      "id": "45146dc8-8bc0-4331-bb57-b8acc48f66ad",
+      "name": "OpenAI Chat Model1",
+      "credentials": {
+        "openAiApi": {
+          "id": "DxjoycbpbncZZ6l8",
+          "name": "n8n free OpenAI API credits"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $json.fullPrompt }}",
+        "options": {
+          "systemMessage": "Sos un agente de documentación técnica. Tu tarea es\nmantener actualizado un documento técnico en Confluence.\n\nReglas clave:\n- Siempre devolvés el documento HTML COMPLETO actualizado.\n- Si ya existe una sección de NexusDocs para el mismo issue,\n  la editás en vez de crear una nueva.\n- Si encontrás información que corrige algo existente en el\n  documento, actualizás el dato en el lugar correcto.\n- Preservás todo el contenido que no se ve afectado.\n- Nunca usás markdown, solo HTML válido para Confluence.\n- No envolvés tu respuesta en bloques de código (```)"
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        4464,
+        -160
+      ],
+      "id": "1f0d64df-0099-4274-91e5-dc4f758234ff",
+      "name": "AI Agent Unified",
+      "retryOnFail": true
+    },
+    {
+      "parameters": {
+        "url": "https://celinalopezutn.atlassian.net/wiki/rest/api/content",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBasicAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "title",
+              "value": "={{ $json.epicName }}"
+            },
+            {
+              "name": "expand",
+              "value": "version,body.storage"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        3984,
+        -160
+      ],
+      "id": "f345efd3-9a79-40f0-9f4d-e3258cfcda92",
+      "name": "Find Confluence Page",
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "sZUb5BfJEq1nrRh7",
+          "name": "Atlassian API Token"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "PUT",
+        "url": "=https://celinalopezutn.atlassian.net/wiki/rest/api/content/{{ $json.pageId }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBasicAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.confluenceBody) }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        4992,
+        -160
+      ],
+      "id": "d45bf985-cc8c-4d9d-9c7c-05f5970e81c5",
+      "name": "Update Confluence Page",
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "sZUb5BfJEq1nrRh7",
+          "name": "Atlassian API Token"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        1520,
+        -160
+      ],
+      "id": "756c0f06-f4d1-4b2d-992f-ccabb165c7d7",
+      "name": "Loop Subtask Comments"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        3248,
+        -720
+      ],
+      "id": "61607312-d387-4b0a-85f7-bbe081c508ec",
+      "name": "Loop PRs"
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "nexusdocs-trigger",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        96,
+        -144
+      ],
+      "id": "1f9b3ce1-5107-4f1e-bcbc-f736da0b2964",
+      "name": "Webhook",
+      "webhookId": "6e6a1379-96dc-49f0-95ce-8a03cadbcf30"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "a43ee890-3816-412f-aae4-d074e2977ddb",
+              "leftValue": "={{ $json.hasPRs }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        2704,
+        -176
+      ],
+      "id": "5f208d89-be02-4e9a-9f75-858bce35524b",
+      "name": "Hay PRs?1"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "868aeded-e535-4757-9996-1b9a3583eb7c",
+              "leftValue": "={{ $json.body.id }}",
+              "rightValue": "",
+              "operator": {
+                "type": "number",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            },
+            {
+              "id": "e8fbdf84-124a-4d84-85f0-fa04fb60e2a5",
+              "leftValue": "={{ $json.body.fields.issuetype.namedValue }}",
+              "rightValue": "Story",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        304,
+        -144
+      ],
+      "id": "d3943516-2a32-4344-b614-9e70bfb8fb3e",
+      "name": "Payload?"
+    },
+    {
+      "parameters": {
+        "url": "={{ $('Loop PRs').item.json.commitsUrl }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBasicAuth",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        3296,
+        -304
+      ],
+      "id": "2e053b92-6aec-4b10-b87b-6a947ce122d6",
+      "name": "Get PR Commits",
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "S9Z7Azlq3RATBhvb",
+          "name": "Generico Bitbucket"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Reducir a 1 solo item para que el resto\n// de la cadena se ejecute una sola vez.\n// No perdemos datos porque Consolidate All Data\n// accede a cada nodo por nombre con $(\"NombreNodo\")\nreturn [{ json: { status: \"comments_collected\" } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2112,
+        -176
+      ],
+      "id": "e547ae3b-719f-494c-9b0b-45c5b36b737d",
+      "name": "Reset Single Item"
+    },
+    {
+      "parameters": {
+        "jsCode": "return [{ json: { status: \"prs_collected\" } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3552,
+        -512
+      ],
+      "id": "42f5c1e6-bc27-46bc-8731-011bf5eec6c2",
+      "name": "Reset Single Item PR"
+    },
+    {
+      "parameters": {
+        "jsCode": "const consolidatedData = $(\"Consolidate All Data\").first().json;\nconst searchResults = $(\"Find Confluence Page\").first().json;\nconst results = searchResults.results || [];\nconst epicName = consolidatedData.epicName;\n\nconst matchingPages = results.filter(\n  page => page.title === epicName\n);\n\nif (matchingPages.length === 0) {\n  throw new Error(\n    `No se encontró página con título \"${epicName}\".`\n  );\n}\n\nconst page = matchingPages[0];\nconst pageId = page.id;\nconst pageVersion = page.version.number;\nconst pageTitle = page.title;\nconst currentPageContent = page.body.storage.value;\n\n// ==========================================\n// LIMPIAR HTML: sacar macros y bloat de Confluence\n// que no son relevantes para el análisis\n// ==========================================\nfunction cleanConfluenceHtml(html) {\n  let clean = html;\n  \n  // Remover macros de Confluence (ac:structured-macro)\n  // que son de UI/templates, no contenido técnico\n  clean = clean.replace(\n    /<ac:structured-macro[^>]*ac:name=\"(panel|info|expand|recently-updated|livesearch|listlabels|blog-posts|status|details|task-list)\"[^]*?<\\/ac:structured-macro>/gs,\n    \"\"\n  );\n  \n  // Remover layouts de Confluence\n  clean = clean.replace(/<ac:layout[^>]*>/g, \"\");\n  clean = clean.replace(/<\\/ac:layout>/g, \"\");\n  clean = clean.replace(/<ac:layout-section[^>]*>/g, \"\");\n  clean = clean.replace(/<\\/ac:layout-section>/g, \"\");\n  clean = clean.replace(/<ac:layout-cell[^>]*>/g, \"\");\n  clean = clean.replace(/<\\/ac:layout-cell>/g, \"\");\n  \n  // Remover emojis de Confluence\n  clean = clean.replace(/<ac:emoticon[^>]*\\/>/g, \"\");\n  \n  // Remover imágenes externas de Confluence\n  clean = clean.replace(/<ac:image[^]*?\\/>/gs, \"\");\n  clean = clean.replace(/<ac:image[^]*?<\\/ac:image>/gs, \"\");\n  clean = clean.replace(/<ri:url[^>]*\\/>/g, \"\");\n  \n  // Remover placeholders\n  clean = clean.replace(/<ac:placeholder[^>]*>[^]*?<\\/ac:placeholder>/gs, \"\");\n  \n  // Remover task lists de template\n  clean = clean.replace(/<ac:task-list>[^]*?<\\/ac:task-list>/gs, \"\");\n  \n  // Remover atributos local-id, data-*, ac:local-id\n  clean = clean.replace(/\\s+(local-id|data-[a-z-]+|ac:local-id|ac:macro-id|ac:schema-version)=\"[^\"]*\"/g, \"\");\n  \n  // Remover fieldset\n  clean = clean.replace(/<fieldset[^>]*>[^]*?<\\/fieldset>/gs, \"\");\n  \n  // Remover líneas vacías múltiples\n  clean = clean.replace(/\\n{3,}/g, \"\\n\\n\");\n  \n  // Remover tags vacíos\n  clean = clean.replace(/<p\\s*\\/>/g, \"\");\n  clean = clean.replace(/<p>\\s*<\\/p>/g, \"\");\n  \n  return clean.trim();\n}\n\nconst cleanedContent = cleanConfluenceHtml(currentPageContent);\n\n// Truncar si sigue siendo muy largo\nconst MAX_PAGE_CHARS = 8000;\nlet pageForPrompt = cleanedContent;\nif (pageForPrompt.length > MAX_PAGE_CHARS) {\n  pageForPrompt = pageForPrompt.substring(0, MAX_PAGE_CHARS)\n    + \"\\n\\n... [DOCUMENTO TRUNCADO POR LONGITUD] ...\";\n}\n\nconst today = new Date().toISOString().split(\"T\")[0];\n\nconst fullPrompt = `\nAnalizá la siguiente Historia de Usuario completada y\nactualizá el documento técnico de Confluence.\n\n## HISTORIA DE USUARIO\n- Clave: ${consolidatedData.huKey}\n- Resumen: ${consolidatedData.huSummary}\n- Epic: ${epicName}\n- Fecha: ${today}\n\n## SUBTAREAS, COMENTARIOS Y CÓDIGO\n${consolidatedData.agentPrompt}\n\n## DOCUMENTO TÉCNICO ACTUAL\n<DOCUMENTO_ACTUAL>\n${pageForPrompt}\n</DOCUMENTO_ACTUAL>\n\n## INSTRUCCIONES\n\n1. Devolvé el documento HTML COMPLETO actualizado.\n   Tu respuesta REEMPLAZA todo el contenido de la página.\n\n2. PRESERVÁ todo el contenido existente que siga válido.\n\n3. Si ya existe una sección para ${consolidatedData.huKey}\n   (buscá 📋 seguido de la clave), EDITALA en vez de\n   agregar una nueva.\n\n4. Si un comentario o descripción CORRIGE información\n   existente, ACTUALIZÁ el dato donde está.\n\n5. Si la información es NUEVA, integrala en la sección\n   correspondiente o creá una nueva.\n\n6. Incluí al final de cada sección de NexusDocs:\n   <p><em>NexusDocs: ${today} | ${consolidatedData.huKey}</em></p>\n\n7. HTML válido para Confluence: <h2>, <h3>, <p>, <ul><li>,\n   <table>. NO markdown. NO bloques de código.\n   NO incluyas \\`\\`\\`html ni \\`\\`\\` en tu respuesta.\n`;\n\nreturn [{\n  json: {\n    fullPrompt,\n    epicName,\n    huKey: consolidatedData.huKey,\n    huSummary: consolidatedData.huSummary,\n    pageId,\n    pageVersion,\n    pageTitle,\n    currentPageContent  // guardamos el original para fallback\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4192,
+        -160
+      ],
+      "id": "90dc59ac-7ce5-409d-bb0d-74968f355e0f",
+      "name": "Prepare Full Context"
+    },
+    {
+      "parameters": {
+        "jsCode": "const context = $(\"Prepare Full Context\").first().json;\n\n// Obtener respuesta del agente\nlet updatedContent = \"\";\ntry {\n  updatedContent = $(\"AI Agent Unified\").first().json.output\n    || $(\"AI Agent Unified\").first().json.text || \"\";\n} catch(e) {\n  updatedContent = \"\";\n}\n\n// Si usaste HTTP Request a OpenAI en vez de AI Agent\nif (!updatedContent) {\n  try {\n    const resp = $(\"AI Agent Unified\").first().json;\n    updatedContent = resp.choices?.[0]?.message?.content || \"\";\n  } catch(e) {}\n}\n\n// Limpiar bloques de código si el agente los agregó\nupdatedContent = updatedContent\n  .replace(/^```html?\\s*/i, \"\")\n  .replace(/\\s*```\\s*$/i, \"\")\n  .trim();\n\n// SEGURIDAD: Si el agente devolvió vacío o muy corto,\n// no reemplazar el documento (evitar borrar contenido)\nif (updatedContent.length < 50) {\n  throw new Error(\n    \"El agente devolvió contenido vacío o muy corto. \" +\n    \"Se cancela la actualización para proteger el documento. \" +\n    `Largo recibido: ${updatedContent.length} caracteres.`\n  );\n}\n\nconst confluenceBody = {\n  id: context.pageId,\n  type: \"page\",\n  title: context.pageTitle,\n  version: {\n    number: context.pageVersion + 1\n  },\n  body: {\n    storage: {\n      value: updatedContent,\n      representation: \"storage\"\n    }\n  }\n};\n\nreturn [{\n  json: {\n    confluenceBody,\n    pageId: context.pageId\n  }\n}];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4768,
+        -160
+      ],
+      "id": "c8159fe7-9a27-49b4-8d88-eb3400bf3c53",
+      "name": "Prepare Confluence Body1"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Get HU Details": {
+      "main": [
+        [
+          {
+            "node": "Get Parent Epic",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Subtasks": {
+      "main": [
+        [
+          {
+            "node": "Loop Subtask Comments",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Subtask Comments": {
+      "main": [
+        [
+          {
+            "node": "Loop Subtask Comments",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get HU Comments": {
+      "main": [
+        [
+          {
+            "node": "Get Subtasks",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Parent Epic": {
+      "main": [
+        [
+          {
+            "node": "Get HU Comments",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Linked PRs": {
+      "main": [
+        [
+          {
+            "node": "Extract PR Info",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract PR Info": {
+      "main": [
+        [
+          {
+            "node": "Hay PRs?1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split PRs": {
+      "main": [
+        [
+          {
+            "node": "Loop PRs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get PR Diff1": {
+      "main": [
+        [
+          {
+            "node": "Get PR Commits",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Consolidate All Data": {
+      "main": [
+        [
+          {
+            "node": "Find Confluence Page",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Chat Model1": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent Unified",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Agent Unified": {
+      "main": [
+        [
+          {
+            "node": "Prepare Confluence Body1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Find Confluence Page": {
+      "main": [
+        [
+          {
+            "node": "Prepare Full Context",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop Subtask Comments": {
+      "main": [
+        [
+          {
+            "node": "Reset Single Item",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Get Subtask Comments",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop PRs": {
+      "main": [
+        [
+          {
+            "node": "Reset Single Item PR",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Get PR Diff1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Payload?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Hay PRs?1": {
+      "main": [
+        [
+          {
+            "node": "Split PRs",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Consolidate All Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Payload?": {
+      "main": [
+        [
+          {
+            "node": "Get HU Details",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get PR Commits": {
+      "main": [
+        [
+          {
+            "node": "Loop PRs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Reset Single Item": {
+      "main": [
+        [
+          {
+            "node": "Get Linked PRs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Reset Single Item PR": {
+      "main": [
+        [
+          {
+            "node": "Consolidate All Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Full Context": {
+      "main": [
+        [
+          {
+            "node": "AI Agent Unified",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Confluence Body1": {
+      "main": [
+        [
+          {
+            "node": "Update Confluence Page",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "66f4c973-4e76-406d-a354-3d28059a508f",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "92c41733430acc0a9985087114149eaed57c4e3292ebc9883655efe4b3efa0ea"
+  },
+  "id": "sb7vx2Ex7x6eTikf",
+  "tags": []
+}
